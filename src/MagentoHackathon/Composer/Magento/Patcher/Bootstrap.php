@@ -29,12 +29,18 @@ class Bootstrap
     private $mageClassFilePath;
 
     /**
-     * @param string $mageClassFilePath Path to the Mage.php file which the patch will be applied on.
+     * @var string
+     */
+    private $functionsFilePath;
+
+    /**
+     * @param array $mageClassFilePath Path to the Mage.php file which the patch will be applied on.
      * @param ProjectConfig $config
      */
     private function __construct($mageClassFilePath, ProjectConfig $config)
     {
-        $this->setMageClassFilePath($mageClassFilePath);
+        $this->setMageClassFilePath($mageClassFilePath['mageClass']);
+        $this->setFunctionsFilePath($mageClassFilePath['functions']);
         $this->config = $config;
     }
 
@@ -44,7 +50,10 @@ class Bootstrap
      */
     public static function fromConfig(ProjectConfig $config)
     {
-        return new self($config->getMagentoRootDir() . '/app/Mage.php', $config);
+        return new self( array(
+            'mageClass' => $config->getMagentoRootDir() . '/app/Mage.php',
+            'functions' => $config->getMagentoRootDir() . '/app/code/core/Mage/Core/functions.php'
+        ), $config);
     }
 
     /**
@@ -82,6 +91,32 @@ class Bootstrap
     }
 
     /**
+     * @return string
+     * @throws \DomainException
+     */
+    private function getFunctionsFilePath()
+    {
+        $mageFileCheck = true;
+
+        if (!is_file($this->functionsFilePath)) {
+            $message = "{$this->functionsFilePath} is not a file.";
+            $mageFileCheck = false;
+        } elseif (!is_readable($this->functionsFilePath)) {
+            $message = "{$this->functionsFilePath} is not readable.";
+            $mageFileCheck = false;
+        } elseif (!is_writable($this->functionsFilePath)) {
+            $message = "{$this->functionsFilePath} is not writable.";
+            $mageFileCheck = false;
+        }
+
+        if (!$mageFileCheck) {
+            throw new \DomainException($message);
+        }
+
+        return $this->functionsFilePaths;
+    }
+
+    /**
      * Path to the Mage.php file which the patch will be applied on.
      *
      * @param string $mageClassFilePath
@@ -89,6 +124,16 @@ class Bootstrap
     private function setMageClassFilePath($mageClassFilePath)
     {
         $this->mageClassFilePath = $mageClassFilePath;
+    }
+
+    /**
+     * Path to the functions.php file which the patch will be applied on.
+     *
+     * @param string $functionsFilePath
+     */
+    private function setFunctionsFilePath($functionsFilePath)
+    {
+        $this->functionsFilePath = $functionsFilePath;
     }
 
     /**
@@ -142,6 +187,11 @@ class Bootstrap
      */
     protected function writeComposerAutoloaderPatch()
     {
+        $this->writeMagePatch();
+        $this->writeFunctionsPatch();
+    }
+
+    protected function writeMagePatch() {
         $mageFileContent = file($this->getMageClassFilePath());
 
         $mageFileBootstrapPart = '';
@@ -164,6 +214,30 @@ class Bootstrap
                              . $mageFileClassDeclarationPart;
 
         return file_put_contents($this->getMageClassFilePath(), $mageFileReplacement) !== false;
+    }
+
+    protected function writeFunctionsPatch() {
+        $patchMark = self::PATCH_MARK;
+
+        $functionsFileContent = file($this->getFunctionsFilePath());
+
+        $functionsReplacement = '';
+        $functionsFileBootstrapLine = 0;
+
+        foreach ($functionsFileContent as $i => $row) {
+            if (preg_match('/^function __autoload\(\$class\)/$')) {
+                $row = "/** $patchMark **/" . PHP_EOL . '/* ' . $row;
+                $functionsFileBootstrapLine = $i;
+            }
+            else if ($i === ($functionsFileBootstrapLine + 9) && trim($row) == '}') {
+                $row = $row . ' */' . PHP_EOL . "/** $patchMark **/";
+            }
+
+            $functionsReplacement .= $row;
+
+        }
+
+        return file_put_contents($this->getFunctionsFilePath(), $functionsReplacement) !== false;
     }
 
     /**
