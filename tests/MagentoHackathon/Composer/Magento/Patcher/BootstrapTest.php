@@ -11,12 +11,14 @@ use org\bovigo\vfs\vfsStream;
 class BootstrapTest extends \PHPUnit_Framework_TestCase
 {
     /**
-     * @dataProvider mageFileProvider
-     * @param $mageFile
+     * @dataProvider filesProvider
      */
-    public function testMageFileIsChangedAfterPatching($mageFile)
+    public function testMageFileIsChangedAfterPatching($mageFile, $functionsFile)
     {
-        $structure = array('app' => array('Mage.php' => file_get_contents($mageFile)));
+        $structure = array('app' => array(
+            'Mage.php' => file_get_contents($mageFile),
+            'code/core/Mage/Core/functions.php' => file_get_contents($functionsFile),
+        ));
         vfsStream::setup('root', null, $structure);
 
         $config = new ProjectConfig(
@@ -40,11 +42,45 @@ class BootstrapTest extends \PHPUnit_Framework_TestCase
     }
 
     /**
-     * @dataProvider mageFileProvider
+     * @dataProvider filesProvider
      */
-    public function testMageFileIsNotModifiedWhenThePatchingFeatureIsOff($mageFile)
+    public function testFunctionsFileIsChangedAfterPatching($mageFile, $functionsFile)
     {
-        $structure = array('app' => array('Mage.php' => file_get_contents($mageFile)));
+        $structure = array('app' => array(
+            'Mage.php' => file_get_contents($functionsFile),
+            'code/core/Mage/Core/functions.php' => file_get_contents($functionsFile),
+        ));
+        vfsStream::setup('root', null, $structure);
+
+        $config = new ProjectConfig(
+            array(
+                ProjectConfig::EXTRA_WITH_BOOTSTRAP_PATCH_KEY => true,
+                ProjectConfig::MAGENTO_ROOT_DIR_KEY => vfsStream::url('root'),
+            ),
+            array()
+        );
+
+        $origFile = vfsStream::url('root/app/code/core/Mage/Core/functions.php');
+        $patcher = Bootstrap::fromConfig($config);
+
+        $this->assertTrue($patcher->canApplyPatch());
+        $this->assertFileEquals($functionsFile, $origFile);
+
+        $patcher->patch();
+
+        $this->assertFalse($patcher->canApplyPatch());
+        $this->assertFileNotEquals($functionsFile, $origFile);
+    }
+
+    /**
+     * @dataProvider filesProvider
+     */
+    public function testMageFileIsNotModifiedWhenThePatchingFeatureIsOff($mageFile, $functionsFile)
+    {
+        $structure = array('app' => array(
+            'Mage.php' => file_get_contents($mageFile),
+            'code/core/Mage/Core/functions.php' => file_get_contents($functionsFile),
+        ));
         vfsStream::setup('root', null, $structure);
 
         $config = new ProjectConfig(
@@ -67,11 +103,14 @@ class BootstrapTest extends \PHPUnit_Framework_TestCase
     }
 
     /**
-     * @dataProvider mageFileProvider
+     * @dataProvider filesProvider
      */
-    public function testBootstrapPatchIsAppliedByDefault($mageFile)
+    public function testBootstrapPatchIsAppliedByDefault($mageFile, $functionsFile)
     {
-        $structure = array('app' => array('Mage.php' => file_get_contents($mageFile)));
+        $structure = array('app' => array(
+            'Mage.php' => file_get_contents($mageFile),
+            'code/core/Mage/Core/functions.php' => file_get_contents($functionsFile),
+        ));
         vfsStream::setup('root', null, $structure);
 
         $config = new ProjectConfig(
@@ -92,11 +131,11 @@ class BootstrapTest extends \PHPUnit_Framework_TestCase
         $this->assertFileNotEquals($mageFile, $mageClassFile);
     }
 
-    public function mageFileProvider()
+    public function filesProvider()
     {
         $fixturesBasePath = __DIR__ . '/../../../../res/fixtures';
         $data = array(
-            array($fixturesBasePath . '/php/Mage/Mage-v1.9.1.0.php')
+            array($fixturesBasePath . '/php/Mage/Mage-v1.9.1.0.php', $fixturesBasePath . '/php/functions/functions-v1.9.3.8.php')
         );
         return $data;
     }
