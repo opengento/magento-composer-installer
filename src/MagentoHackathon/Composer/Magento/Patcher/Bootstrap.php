@@ -32,6 +32,7 @@ class Bootstrap
      * @var string
      */
     private $functionsFilePath;
+    private $functionsFilePaths;
 
     /**
      * @param array $mageClassFilePath Path to the Mage.php file which the patch will be applied on.
@@ -113,7 +114,7 @@ class Bootstrap
             throw new \DomainException($message);
         }
 
-        return $this->functionsFilePaths;
+        return $this->functionsFilePath;
     }
 
     /**
@@ -225,12 +226,12 @@ class Bootstrap
         $functionsFileBootstrapLine = 0;
 
         foreach ($functionsFileContent as $i => $row) {
-            if (preg_match('/^function __autoload\(\$class\)/$')) {
+            if (preg_match('/^function __autoload\(\$class\)$/', $row)) {
                 $row = "/** $patchMark **/" . PHP_EOL . '/* ' . $row;
                 $functionsFileBootstrapLine = $i;
             }
             else if ($i === ($functionsFileBootstrapLine + 9) && trim($row) == '}') {
-                $row = $row . ' */' . PHP_EOL . "/** $patchMark **/";
+                $row = str_replace('}', '} */' . PHP_EOL . "/** $patchMark **/", $row);
             }
 
             $functionsReplacement .= $row;
